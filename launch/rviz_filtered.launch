@@ -1,0 +1,4 @@
+<launch>
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find lidar_body_tracking)/rviz/view_cloud_filtered.rviz" />
+</launch>
+

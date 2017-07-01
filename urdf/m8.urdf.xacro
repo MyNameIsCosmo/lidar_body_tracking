@@ -1,0 +1,23 @@
+<?xml version="3.0"?>
+<robot name="sensor_m8" xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:macro name="sensor_m8">
+    <link name="base_link"/>
+    <joint name="m8_joint" type="fixed">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <parent link="base_link"/>
+      <child link="QP308"/>
+    </joint>
+    <link name="QP308">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <cylinder length="0.0876" radius="0.10315"/> 
+        </geometry>
+        <material name="dark_grey">
+          <color rgba="0.3 0.3 0.3 1"/>
+        </material>
+      </visual>
+    </link>
+  </xacro:macro>
+  <sensor_m8/>
+</robot>

@@ -1,0 +1,11 @@
+<launch>
+  <node name="pcl_body_tracking" pkg="lidar_body_tracking" type="pcl_body_tracking"/>
+
+  <include file="$(find lidar_body_tracking)/launch/includes/urdf.launch.xml">
+  </include>
+
+  <include file="$(find lidar_body_tracking)/launch/rviz_filtered.launch">
+  </include>
+
+</launch>
+

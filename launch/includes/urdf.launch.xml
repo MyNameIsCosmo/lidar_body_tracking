@@ -1,0 +1,11 @@
+<launch>
+
+  <arg name="urdf_file" default="$(find xacro)/xacro.py '$(find lidar_body_tracking)/urdf/m8.urdf.xacro'" />
+  <param name="robot_description" command="$(arg urdf_file)" />
+
+  <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
+    <param name="publish_frequency" type="double" value="10.0" />
+  </node>
+
+</launch>
+
