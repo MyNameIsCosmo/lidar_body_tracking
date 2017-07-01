@@ -25,11 +25,11 @@ Written and tested on: Ubuntu 16.04, ROS Kinetic
 1. The URDF frame is QP308. You can change this in `/urdf/m8.launch.xacro`  
 
 ## TODO:
-[ ] Dynamic Reconfigure for Link, Leaf size, min cluster, etc  
-[ ] Clustering of indicies for person detection  
-[ ] Output potential people to a topic  
-[ ] Control an RVIZ marker or something  
-[ ] Comment and document code  
+- [ ] Dynamic Reconfigure for Link, Leaf size, min cluster, etc  
+- [ ] Clustering of indicies for person detection  
+- [ ] Output potential people to a topic  
+- [ ] Control an RVIZ marker or something  
+- [ ] Comment and document code  
 
 ## References
 [ROS WIKI URDF](http://wiki.ros.org/urdf)  
