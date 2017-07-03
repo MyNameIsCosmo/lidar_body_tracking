@@ -21,19 +21,23 @@ Written and tested on: Ubuntu 16.04, ROS Kinetic
 2. Launch 
     1. `source ~/catkin_ws/devel/setup.sh`
     2. `roslaunch lidar_body_tracking lidar_body_tracking.launch`
-3. Dynamic Reconfigure  
-    1. `rosrun rqt_reconfigure rqt_reconfigure`  
 
 ## Notes
 1. The URDF frame is QP308. You can change this in `/urdf/m8.launch.xacro`  
+2. You can change the default topics in the launch file `/launch/lidar_body_tracking.launch`  
 
 ## TODO:
 - [x] Dynamic Reconfigure for Link, Leaf size, min cluster, etc  
+- [x] ROSParam for topics
 - [x] Clustering of indicies for person detection  
 - [ ] Output potential people to a topic  
+    - [ ] Calculate person velocity
+    - [ ] Calculate certainty of person
 - [x] Control an RVIZ marker or something  
-- [ ] Support body tracking while moving, loop closure and Odom tracking.  
+- [ ] Support body tracking while lidar is moving, loop closure and Odom tracking.  
 - [ ] Comment and document code  
+    - [ ] Object-oriented
+    - [ ] Clean-up code
 
 ## References
 [ROS WIKI URDF](http://wiki.ros.org/urdf)  

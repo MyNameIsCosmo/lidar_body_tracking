@@ -30,8 +30,8 @@ int LEAF_SIZE = 10;
 float RESOLUTION = 0.1f;
 int MIN_FILTERED_CLOUD_SIZE = 50;
 int MIN_CLUSTERED_CLOUD_SIZE = 50;
-float CLUSTER_TOLERANCE = 0.07;
-int MIN_CLUSTER_SIZE = 100;
+float CLUSTER_TOLERANCE = 0.2;
+int MIN_CLUSTER_SIZE = 50;
 int MAX_CLUSTER_SIZE = 25000;
 
 // ROS Publisher
@@ -204,11 +204,16 @@ int main (int argc, char** argv)
   f = boost::bind(&dynrcfg_callback, _1, _2);
   server.setCallback(f);
 
-  ros::Subscriber sub = nh.subscribe(SCAN_TOPIC, 1, cloud_cb);
+  std::string topic_scan, topic_filtered, topic_clustered;
+  nh.param<std::string>("scan_topic", topic_scan, SCAN_TOPIC);
+  nh.param<std::string>("filtered_topic", topic_filtered, FILTERED_TOPIC);
+  nh.param<std::string>("clustered_topic", topic_clustered, CLUSTERED_TOPIC);
 
-  pub_filtered = nh.advertise<sensor_msgs::PointCloud2>(FILTERED_TOPIC, 1);
+  ros::Subscriber sub = nh.subscribe(topic_scan, 1, cloud_cb);
+
+  pub_filtered = nh.advertise<sensor_msgs::PointCloud2>(topic_filtered, 1);
   pub_filter = nh.advertise<sensor_msgs::PointCloud2>(FILTER_TOPIC, 1);
-  pub_clustered = nh.advertise<sensor_msgs::PointCloud2>(CLUSTERED_TOPIC, 1);
+  pub_clustered = nh.advertise<sensor_msgs::PointCloud2>(topic_clustered, 1);
   pub_vis = nh.advertise<visualization_msgs::Marker> ("visualization_marker", 0);
 
   ROS_INFO_STREAM("Spinning");
