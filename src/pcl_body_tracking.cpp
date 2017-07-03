@@ -12,6 +12,10 @@
 #include <pcl/kdtree/kdtree.h>
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/PCLHeader.h>
+#include <pcl/common/centroid.h>
+#include <pcl/common/common.h>
+
+#include <visualization_msgs/Marker.h>
 
 #include <sensor_msgs/PointCloud2.h>
 
@@ -31,7 +35,7 @@ int MIN_CLUSTER_SIZE = 100;
 int MAX_CLUSTER_SIZE = 25000;
 
 // ROS Publisher
-ros::Publisher pub_filtered, pub_filter, pub_clustered;
+ros::Publisher pub_filtered, pub_filter, pub_clustered, pub_vis;
 bool first_msg = true;
 sensor_msgs::PointCloud2 msg_clustered, msg_filtered, msg_filter;
 pcl::PointCloud<pcl::PointXYZ> cloud, filter;
@@ -52,6 +56,55 @@ void dynrcfg_callback(lidar_body_tracking::lidar_body_trackingConfig &config, ui
   MAX_CLUSTER_SIZE = config.max_cluster_size;
 }
 
+visualization_msgs::Marker mark_cluster(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cluster, std::string ns ,int id, float r, float g, float b)
+{
+  Eigen::Vector4f centroid;
+  Eigen::Vector4f min;
+  Eigen::Vector4f max;
+ 
+  pcl::compute3DCentroid (*cloud_cluster, centroid);
+  pcl::getMinMax3D (*cloud_cluster, min, max);
+ 
+  uint32_t shape = visualization_msgs::Marker::CUBE;
+  visualization_msgs::Marker marker;
+  marker.header.frame_id = cloud_cluster->header.frame_id;
+  marker.header.stamp = ros::Time::now();
+ 
+  marker.ns = ns;
+  marker.id = id;
+  marker.type = shape;
+  marker.action = visualization_msgs::Marker::ADD;
+ 
+  marker.pose.position.x = centroid[0];
+  marker.pose.position.y = centroid[1];
+  marker.pose.position.z = centroid[2];
+  marker.pose.orientation.x = 0.0;
+  marker.pose.orientation.y = 0.0;
+  marker.pose.orientation.z = 0.0;
+  marker.pose.orientation.w = 1.0;
+ 
+  marker.scale.x = (max[0]-min[0]);
+  marker.scale.y = (max[1]-min[1]);
+  marker.scale.z = (max[2]-min[2]);
+ 
+  if (marker.scale.x ==0)
+      marker.scale.x=0.1;
+
+  if (marker.scale.y ==0)
+    marker.scale.y=0.1;
+
+  if (marker.scale.z ==0)
+    marker.scale.z=0.1;
+   
+  marker.color.r = r;
+  marker.color.g = g;
+  marker.color.b = b;
+  marker.color.a = 0.5;
+
+  marker.lifetime = ros::Duration(0.5);
+  return marker;
+} 
+
 void cloud_cb(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
 {
   // Convert to PCL data type
@@ -59,7 +112,10 @@ void cloud_cb(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   pcl_conversions::toPCL(*cloud_msg, pcl_pc);
   pcl::fromPCLPointCloud2(pcl_pc, cloud);
 
+  cloud.header = pcl_conversions::toPCL(cloud_msg->header);
+
   pcl::octree::OctreePointCloudChangeDetector<pcl::PointXYZ> octree (RESOLUTION);
+  // TODO: use pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>); schema
   cloud_ptr = cloud.makeShared();
 
   if (first_msg){
@@ -82,6 +138,9 @@ void cloud_cb(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud;
   filtered_cloud = (pcl::PointCloud<pcl::PointXYZ>::Ptr) new pcl::PointCloud<pcl::PointXYZ>();
+
+  (filtered_cloud)->header = pcl_conversions::toPCL(cloud_msg->header);
+
   filtered_cloud->points.reserve(newPointVector.size());
 
   for (std::vector<int>::iterator it = newPointVector.begin (); it != newPointVector.end (); it++)
@@ -104,16 +163,23 @@ void cloud_cb(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
     ROS_INFO("cluster size %d", cluster_indices.size());
   }
 
+
+  int mark = 0;
   for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it) {
       pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cluster (new pcl::PointCloud<pcl::PointXYZ>);
-      for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); pit++)
+      for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); pit++) {
           cloud_cluster->points.push_back (filtered_cloud->points[*pit]); //*
+      }
       ROS_INFO("PointCloud representing the Cluster: %d data points.", cloud_cluster->points.size());
+
+      (cloud_cluster)->header = pcl_conversions::toPCL(cloud_msg->header);
 
       if(cloud_cluster->points.size() > MIN_CLUSTERED_CLOUD_SIZE){
           pcl::toROSMsg(*cloud_cluster, msg_clustered);
           msg_clustered.header = cloud_msg->header;
           pub_clustered.publish(msg_clustered);
+          mark++;
+          pub_vis.publish(mark_cluster(cloud_cluster, "cluster", mark, 255, 0, 0));
       }
   }
 
@@ -143,6 +209,7 @@ int main (int argc, char** argv)
   pub_filtered = nh.advertise<sensor_msgs::PointCloud2>(FILTERED_TOPIC, 1);
   pub_filter = nh.advertise<sensor_msgs::PointCloud2>(FILTER_TOPIC, 1);
   pub_clustered = nh.advertise<sensor_msgs::PointCloud2>(CLUSTERED_TOPIC, 1);
+  pub_vis = nh.advertise<visualization_msgs::Marker> ("visualization_marker", 0);
 
   ROS_INFO_STREAM("Spinning");
 
