@@ -1,5 +1,8 @@
 #include <ros/ros.h>
 
+#include <dynamic_reconfigure/server.h>
+#include <lidar_body_tracking/lidar_body_trackingConfig.h>
+
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/conversions.h>
 #include <pcl/point_cloud.h>
@@ -18,9 +21,9 @@ static const std::string FILTERED_TOPIC = "/pcl_filtered";
 static const std::string FILTER_TOPIC = "/pcl_filter";
 
 // Variables
-static const int LEAF_SIZE = 10;
-static const float RESOLUTION = 0.1f;
-static const int MIN_FILTERED_CLOUD_SIZE = 50;
+int LEAF_SIZE = 10;
+float RESOLUTION = 0.1f;
+int MIN_FILTERED_CLOUD_SIZE = 50;
 
 // ROS Publisher
 ros::Publisher pub_filtered, pub_filter, pub_clustered;
@@ -29,8 +32,15 @@ sensor_msgs::PointCloud2 msg_clustered, msg_filtered, msg_filter;
 pcl::PointCloud<pcl::PointXYZ> cloud, filter;
 pcl::PointCloud<pcl::PointXYZ>::Ptr filter_ptr, cloud_ptr;
 
+void dynrcfg_callback(lidar_body_tracking::lidar_body_trackingConfig &config, uint32_t level) {
+  LEAF_SIZE = config.leaf_size;
+  RESOLUTION = config.resolution;
+  MIN_FILTERED_CLOUD_SIZE = config.min_filtered_cloud_size;
+}
+
 void cloud_cb(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
 {
+  // Convert to PCL data type
   pcl::PCLPointCloud2 pcl_pc;
   pcl_conversions::toPCL(*cloud_msg, pcl_pc);
   pcl::fromPCLPointCloud2(pcl_pc, cloud);
@@ -77,6 +87,12 @@ int main (int argc, char** argv)
 {
   ros::init (argc, argv, "lidar_body_extraction");
   ros::NodeHandle nh;
+
+  dynamic_reconfigure::Server<lidar_body_tracking::lidar_body_trackingConfig> server;
+  dynamic_reconfigure::Server<lidar_body_tracking::lidar_body_trackingConfig>::CallbackType f;
+
+  f = boost::bind(&dynrcfg_callback, _1, _2);
+  server.setCallback(f);
 
   ros::Subscriber sub = nh.subscribe(SCAN_TOPIC, 1, cloud_cb);
 
