@@ -19,11 +19,16 @@
 static const std::string SCAN_TOPIC = "/QP308/pc_QP308";
 static const std::string FILTERED_TOPIC = "/pcl_filtered";
 static const std::string FILTER_TOPIC = "/pcl_filter";
+static const std::string CLUSTERED_TOPIC = "/pcl_clustered";
 
 // Variables
 int LEAF_SIZE = 10;
 float RESOLUTION = 0.1f;
 int MIN_FILTERED_CLOUD_SIZE = 50;
+int MIN_CLUSTERED_CLOUD_SIZE = 50;
+float CLUSTER_TOLERANCE = 0.07;
+int MIN_CLUSTER_SIZE = 100;
+int MAX_CLUSTER_SIZE = 25000;
 
 // ROS Publisher
 ros::Publisher pub_filtered, pub_filter, pub_clustered;
@@ -33,9 +38,18 @@ pcl::PointCloud<pcl::PointXYZ> cloud, filter;
 pcl::PointCloud<pcl::PointXYZ>::Ptr filter_ptr, cloud_ptr;
 
 void dynrcfg_callback(lidar_body_tracking::lidar_body_trackingConfig &config, uint32_t level) {
+  ROS_INFO("Reconfigure Request: %d %f %d %d", 
+            config.leaf_size,
+						config.resolution, 
+            config.min_filtered_cloud_size,
+            config.min_clustered_cloud_size);
   LEAF_SIZE = config.leaf_size;
   RESOLUTION = config.resolution;
   MIN_FILTERED_CLOUD_SIZE = config.min_filtered_cloud_size;
+  MIN_CLUSTERED_CLOUD_SIZE = config.min_clustered_cloud_size;
+  CLUSTER_TOLERANCE = config.cluster_tolerance;
+  MIN_CLUSTER_SIZE = config.min_cluster_size;
+  MAX_CLUSTER_SIZE = config.max_cluster_size;
 }
 
 void cloud_cb(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
@@ -73,6 +87,36 @@ void cloud_cb(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   for (std::vector<int>::iterator it = newPointVector.begin (); it != newPointVector.end (); it++)
     filtered_cloud->points.push_back(cloud_ptr->points[*it]);
 
+  std::vector<pcl::PointIndices> cluster_indices;
+  if(filtered_cloud->size() > MIN_FILTERED_CLOUD_SIZE){
+    // Creating the KdTree object for the search method of the extraction
+    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+    tree->setInputCloud (filtered_cloud);
+
+    // ClusterExtraction
+    pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
+    ec.setClusterTolerance (CLUSTER_TOLERANCE); // 7cm
+    ec.setMinClusterSize (MIN_CLUSTER_SIZE);
+    ec.setMaxClusterSize (MAX_CLUSTER_SIZE);
+    ec.setSearchMethod (tree);
+    ec.setInputCloud (filtered_cloud);
+    ec.extract (cluster_indices);
+    ROS_INFO("cluster size %d", cluster_indices.size());
+  }
+
+  for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it) {
+      pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cluster (new pcl::PointCloud<pcl::PointXYZ>);
+      for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); pit++)
+          cloud_cluster->points.push_back (filtered_cloud->points[*pit]); //*
+      ROS_INFO("PointCloud representing the Cluster: %d data points.", cloud_cluster->points.size());
+
+      if(cloud_cluster->points.size() > MIN_CLUSTERED_CLOUD_SIZE){
+          pcl::toROSMsg(*cloud_cluster, msg_clustered);
+          msg_clustered.header = cloud_msg->header;
+          pub_clustered.publish(msg_clustered);
+      }
+  }
+
   pcl::toROSMsg(*filtered_cloud, msg_filtered);
   msg_filtered.header = cloud_msg->header;
   pub_filtered.publish(msg_filtered);
@@ -98,6 +142,7 @@ int main (int argc, char** argv)
 
   pub_filtered = nh.advertise<sensor_msgs::PointCloud2>(FILTERED_TOPIC, 1);
   pub_filter = nh.advertise<sensor_msgs::PointCloud2>(FILTER_TOPIC, 1);
+  pub_clustered = nh.advertise<sensor_msgs::PointCloud2>(CLUSTERED_TOPIC, 1);
 
   ROS_INFO_STREAM("Spinning");
 
