@@ -3,6 +3,7 @@ ROS Catkin package to track people using ortree and cluster extraction from a fi
 Sensor Used for testing: Quanergy M8  
 Written and tested on: Ubuntu 16.04, ROS Kinetic  
 ![](images/lidar_tracking.gif)  
+![](images/clustered_markers.gif)  
 
 ## Installation
 1. Make your catkin workspace:
@@ -20,15 +21,17 @@ Written and tested on: Ubuntu 16.04, ROS Kinetic
 2. Launch 
     1. `source ~/catkin_ws/devel/setup.sh`
     2. `roslaunch lidar_body_tracking lidar_body_tracking.launch`
+3. Dynamic Reconfigure  
+    1. `rosrun rqt_reconfigure rqt_reconfigure`  
 
 ## Notes
 1. The URDF frame is QP308. You can change this in `/urdf/m8.launch.xacro`  
 
 ## TODO:
-- [ ] Dynamic Reconfigure for Link, Leaf size, min cluster, etc  
-- [ ] Clustering of indicies for person detection  
+- [x] Dynamic Reconfigure for Link, Leaf size, min cluster, etc  
+- [x] Clustering of indicies for person detection  
 - [ ] Output potential people to a topic  
-- [ ] Control an RVIZ marker or something  
+- [x] Control an RVIZ marker or something  
 - [ ] Support body tracking while moving, loop closure and Odom tracking.  
 - [ ] Comment and document code  
 
