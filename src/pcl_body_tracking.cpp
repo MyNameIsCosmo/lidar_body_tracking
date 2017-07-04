@@ -22,7 +22,6 @@
 // Topics
 static const std::string SCAN_TOPIC = "/QP308/pc_QP308";
 static const std::string FILTERED_TOPIC = "/pcl_filtered";
-static const std::string FILTER_TOPIC = "/pcl_filter";
 static const std::string CLUSTERED_TOPIC = "/pcl_clustered";
 
 // Variables
@@ -35,9 +34,9 @@ int MIN_CLUSTER_SIZE = 50;
 int MAX_CLUSTER_SIZE = 25000;
 
 // ROS Publisher
-ros::Publisher pub_filtered, pub_filter, pub_clustered, pub_vis;
+ros::Publisher pub_filtered, pub_clustered, pub_vis;
 bool first_msg = true;
-sensor_msgs::PointCloud2 msg_clustered, msg_filtered, msg_filter;
+sensor_msgs::PointCloud2 msg_clustered, msg_filtered;
 pcl::PointCloud<pcl::PointXYZ> cloud, filter;
 pcl::PointCloud<pcl::PointXYZ>::Ptr filter_ptr, cloud_ptr;
 
@@ -187,10 +186,6 @@ void cloud_cb(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   msg_filtered.header = cloud_msg->header;
   pub_filtered.publish(msg_filtered);
 
-  pcl::toROSMsg(filter, msg_filter);
-  msg_filter.header = cloud_msg->header;
-  pub_filter.publish(msg_filter);
-
 }
 
 int main (int argc, char** argv)
@@ -212,7 +207,6 @@ int main (int argc, char** argv)
   ros::Subscriber sub = nh.subscribe(topic_scan, 1, cloud_cb);
 
   pub_filtered = nh.advertise<sensor_msgs::PointCloud2>(topic_filtered, 1);
-  pub_filter = nh.advertise<sensor_msgs::PointCloud2>(FILTER_TOPIC, 1);
   pub_clustered = nh.advertise<sensor_msgs::PointCloud2>(topic_clustered, 1);
   pub_vis = nh.advertise<visualization_msgs::Marker> ("visualization_marker", 0);
 
