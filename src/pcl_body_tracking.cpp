@@ -19,10 +19,16 @@
 
 #include <sensor_msgs/PointCloud2.h>
 
+#include <people_msgs/Person.h>
+#include <people_msgs/PersonStamped.h>
+#include <geometry_msgs/Point.h>
+#include <std_msgs/Header.h>
+
 // Topics
 static const std::string SCAN_TOPIC = "/QP308/pc_QP308";
 static const std::string FILTERED_TOPIC = "/pcl_filtered";
 static const std::string CLUSTERED_TOPIC = "/pcl_clustered";
+static const std::string PERSON_TOPIC = "/person";
 
 // Variables
 int LEAF_SIZE = 10;
@@ -34,7 +40,7 @@ int MIN_CLUSTER_SIZE = 50;
 int MAX_CLUSTER_SIZE = 25000;
 
 // ROS Publisher
-ros::Publisher pub_filtered, pub_clustered, pub_vis;
+ros::Publisher pub_filtered, pub_clustered, pub_vis, pub_person;
 bool first_msg = true;
 sensor_msgs::PointCloud2 msg_clustered, msg_filtered;
 pcl::PointCloud<pcl::PointXYZ> cloud, filter;
@@ -55,19 +61,29 @@ void dynrcfg_callback(lidar_body_tracking::lidar_body_trackingConfig &config, ui
   MAX_CLUSTER_SIZE = config.max_cluster_size;
 }
 
-visualization_msgs::Marker mark_cluster(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cluster, std::string ns ,int id, float r, float g, float b)
+people_msgs::PersonStamped tag_person(std_msgs::Header header, std::string name, geometry_msgs::Point position, geometry_msgs::Point velocity, float reliability)
 {
-  Eigen::Vector4f centroid;
-  Eigen::Vector4f min;
-  Eigen::Vector4f max;
- 
-  pcl::compute3DCentroid (*cloud_cluster, centroid);
-  pcl::getMinMax3D (*cloud_cluster, min, max);
- 
+  people_msgs::PersonStamped personStamped;
+  people_msgs::Person person;
+
+  person.name = name;
+  person.position = position;
+  person.velocity = velocity;
+  person.reliability = reliability;
+  //person.tagnames = tagnames;
+  //person.tags = tags;
+
+  personStamped.header = header;
+  personStamped.person = person;
+
+  return personStamped;
+}
+
+visualization_msgs::Marker mark_centroid(std_msgs::Header header, Eigen::Vector4f centroid, Eigen::Vector4f min, Eigen::Vector4f max, std::string ns ,int id, float r, float g, float b)
+{
   uint32_t shape = visualization_msgs::Marker::CUBE;
   visualization_msgs::Marker marker;
-  marker.header.frame_id = cloud_cluster->header.frame_id;
-  marker.header.stamp = ros::Time::now();
+  marker.header = header;
  
   marker.ns = ns;
   marker.id = id;
@@ -102,7 +118,27 @@ visualization_msgs::Marker mark_cluster(pcl::PointCloud<pcl::PointXYZ>::Ptr clou
 
   marker.lifetime = ros::Duration(0.5);
   return marker;
-} 
+}
+
+void new_person(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cluster, int id){
+  Eigen::Vector4f centroid;
+  Eigen::Vector4f min;
+  Eigen::Vector4f max;
+ 
+  pcl::compute3DCentroid (*cloud_cluster, centroid);
+  pcl::getMinMax3D (*cloud_cluster, min, max);
+
+  geometry_msgs::Point pose, velocity;
+  pose.x = centroid[0];
+  pose.y = centroid[1];
+  pose.z = centroid[2];
+
+  //mark_centroid visualization_msgs::Marker mark_centroid(Eigen::Vector4f centroid, std::string ns ,int id, float r, float g, float b)
+  pub_vis.publish(mark_centroid(pcl_conversions::fromPCL(cloud_cluster->header), centroid, min, max, "cluster", id, 255, 0, 0));
+
+  //tag_person people_msgs::PersonStamped tag_person(std_msgs::Header header, std::string name, geometry_msgs::Point position, geometry_msgs::Point velocity, float reliability)
+  pub_person.publish(tag_person(pcl_conversions::fromPCL(cloud_cluster->header), boost::to_string(id), pose, velocity, 0)); 
+}
 
 void cloud_cb(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
 {
@@ -178,7 +214,7 @@ void cloud_cb(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
           msg_clustered.header = cloud_msg->header;
           pub_clustered.publish(msg_clustered);
           mark++;
-          pub_vis.publish(mark_cluster(cloud_cluster, "cluster", mark, 255, 0, 0));
+          new_person(cloud_cluster, mark);
       }
   }
 
@@ -199,16 +235,18 @@ int main (int argc, char** argv)
   f = boost::bind(&dynrcfg_callback, _1, _2);
   server.setCallback(f);
 
-  std::string topic_scan, topic_filtered, topic_clustered;
+  std::string topic_scan, topic_filtered, topic_clustered, topic_person;
   nh.param<std::string>("scan_topic", topic_scan, SCAN_TOPIC);
   nh.param<std::string>("filtered_topic", topic_filtered, FILTERED_TOPIC);
   nh.param<std::string>("clustered_topic", topic_clustered, CLUSTERED_TOPIC);
+  nh.param<std::string>("person_topic", topic_person, PERSON_TOPIC);
 
   ros::Subscriber sub = nh.subscribe(topic_scan, 1, cloud_cb);
 
   pub_filtered = nh.advertise<sensor_msgs::PointCloud2>(topic_filtered, 1);
   pub_clustered = nh.advertise<sensor_msgs::PointCloud2>(topic_clustered, 1);
   pub_vis = nh.advertise<visualization_msgs::Marker> ("visualization_marker", 0);
+  pub_person = nh.advertise<people_msgs::PersonStamped> (topic_person, 1);
 
   ROS_INFO_STREAM("Spinning");
 

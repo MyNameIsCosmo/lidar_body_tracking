@@ -3,6 +3,7 @@
     <param name="scan_topic" value="/QP308/pc_QP308"/>
     <param name="filtered_topic" value="/pcl_filtered"/>
     <param name="clustered_topic" value="/pcl_clustered"/>
+    <param name="person_topic" value="/person"/>
   </node>
 
   <include file="$(find lidar_body_tracking)/launch/includes/urdf.launch.xml">
