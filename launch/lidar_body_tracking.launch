@@ -1,5 +1,10 @@
 <launch>
-  <node name="pcl_body_tracking" pkg="lidar_body_tracking" type="pcl_body_tracking"/>
+  <node name="pcl_body_tracking" pkg="lidar_body_tracking" type="pcl_body_tracking">
+    <param name="scan_topic" value="/QP308/pc_QP308"/>
+    <param name="filtered_topic" value="/pcl_filtered"/>
+    <param name="clustered_topic" value="/pcl_clustered"/>
+    <param name="person_topic" value="/person"/>
+  </node>
 
   <include file="$(find lidar_body_tracking)/launch/includes/urdf.launch.xml">
   </include>
@@ -7,5 +12,6 @@
   <!--include file="$(find lidar_body_tracking)/launch/rviz_filtered.launch">
   </include-->
 
+  <node name="rqt_reconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure" args="pcl_body_tracking"/>
 </launch>
 

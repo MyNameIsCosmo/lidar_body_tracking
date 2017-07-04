@@ -12,30 +12,132 @@
 #include <pcl/kdtree/kdtree.h>
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/PCLHeader.h>
+#include <pcl/common/centroid.h>
+#include <pcl/common/common.h>
+
+#include <visualization_msgs/Marker.h>
 
 #include <sensor_msgs/PointCloud2.h>
+
+#include <people_msgs/Person.h>
+#include <people_msgs/PersonStamped.h>
+#include <geometry_msgs/Point.h>
+#include <std_msgs/Header.h>
 
 // Topics
 static const std::string SCAN_TOPIC = "/QP308/pc_QP308";
 static const std::string FILTERED_TOPIC = "/pcl_filtered";
-static const std::string FILTER_TOPIC = "/pcl_filter";
+static const std::string CLUSTERED_TOPIC = "/pcl_clustered";
+static const std::string PERSON_TOPIC = "/person";
 
 // Variables
 int LEAF_SIZE = 10;
 float RESOLUTION = 0.1f;
 int MIN_FILTERED_CLOUD_SIZE = 50;
+int MIN_CLUSTERED_CLOUD_SIZE = 50;
+float CLUSTER_TOLERANCE = 0.2;
+int MIN_CLUSTER_SIZE = 50;
+int MAX_CLUSTER_SIZE = 25000;
 
 // ROS Publisher
-ros::Publisher pub_filtered, pub_filter, pub_clustered;
+ros::Publisher pub_filtered, pub_clustered, pub_vis, pub_person;
 bool first_msg = true;
-sensor_msgs::PointCloud2 msg_clustered, msg_filtered, msg_filter;
+sensor_msgs::PointCloud2 msg_clustered, msg_filtered;
 pcl::PointCloud<pcl::PointXYZ> cloud, filter;
 pcl::PointCloud<pcl::PointXYZ>::Ptr filter_ptr, cloud_ptr;
 
 void dynrcfg_callback(lidar_body_tracking::lidar_body_trackingConfig &config, uint32_t level) {
+  ROS_INFO("Reconfigure Request: %d %f %d %d", 
+            config.leaf_size,
+						config.resolution, 
+            config.min_filtered_cloud_size,
+            config.min_clustered_cloud_size);
   LEAF_SIZE = config.leaf_size;
   RESOLUTION = config.resolution;
   MIN_FILTERED_CLOUD_SIZE = config.min_filtered_cloud_size;
+  MIN_CLUSTERED_CLOUD_SIZE = config.min_clustered_cloud_size;
+  CLUSTER_TOLERANCE = config.cluster_tolerance;
+  MIN_CLUSTER_SIZE = config.min_cluster_size;
+  MAX_CLUSTER_SIZE = config.max_cluster_size;
+}
+
+people_msgs::PersonStamped tag_person(std_msgs::Header header, std::string name, geometry_msgs::Point position, geometry_msgs::Point velocity, float reliability)
+{
+  people_msgs::PersonStamped personStamped;
+  people_msgs::Person person;
+
+  person.name = name;
+  person.position = position;
+  person.velocity = velocity;
+  person.reliability = reliability;
+  //person.tagnames = tagnames;
+  //person.tags = tags;
+
+  personStamped.header = header;
+  personStamped.person = person;
+
+  return personStamped;
+}
+
+visualization_msgs::Marker mark_centroid(std_msgs::Header header, Eigen::Vector4f centroid, Eigen::Vector4f min, Eigen::Vector4f max, std::string ns ,int id, float r, float g, float b)
+{
+  uint32_t shape = visualization_msgs::Marker::CUBE;
+  visualization_msgs::Marker marker;
+  marker.header = header;
+ 
+  marker.ns = ns;
+  marker.id = id;
+  marker.type = shape;
+  marker.action = visualization_msgs::Marker::ADD;
+ 
+  marker.pose.position.x = centroid[0];
+  marker.pose.position.y = centroid[1];
+  marker.pose.position.z = centroid[2];
+  marker.pose.orientation.x = 0.0;
+  marker.pose.orientation.y = 0.0;
+  marker.pose.orientation.z = 0.0;
+  marker.pose.orientation.w = 1.0;
+ 
+  marker.scale.x = (max[0]-min[0]);
+  marker.scale.y = (max[1]-min[1]);
+  marker.scale.z = (max[2]-min[2]);
+ 
+  if (marker.scale.x ==0)
+      marker.scale.x=0.1;
+
+  if (marker.scale.y ==0)
+    marker.scale.y=0.1;
+
+  if (marker.scale.z ==0)
+    marker.scale.z=0.1;
+   
+  marker.color.r = r;
+  marker.color.g = g;
+  marker.color.b = b;
+  marker.color.a = 0.5;
+
+  marker.lifetime = ros::Duration(0.5);
+  return marker;
+}
+
+void new_person(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cluster, int id){
+  Eigen::Vector4f centroid;
+  Eigen::Vector4f min;
+  Eigen::Vector4f max;
+ 
+  pcl::compute3DCentroid (*cloud_cluster, centroid);
+  pcl::getMinMax3D (*cloud_cluster, min, max);
+
+  geometry_msgs::Point pose, velocity;
+  pose.x = centroid[0];
+  pose.y = centroid[1];
+  pose.z = centroid[2];
+
+  //mark_centroid visualization_msgs::Marker mark_centroid(Eigen::Vector4f centroid, std::string ns ,int id, float r, float g, float b)
+  pub_vis.publish(mark_centroid(pcl_conversions::fromPCL(cloud_cluster->header), centroid, min, max, "cluster", id, 255, 0, 0));
+
+  //tag_person people_msgs::PersonStamped tag_person(std_msgs::Header header, std::string name, geometry_msgs::Point position, geometry_msgs::Point velocity, float reliability)
+  pub_person.publish(tag_person(pcl_conversions::fromPCL(cloud_cluster->header), boost::to_string(id), pose, velocity, 0)); 
 }
 
 void cloud_cb(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
@@ -45,7 +147,10 @@ void cloud_cb(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
   pcl_conversions::toPCL(*cloud_msg, pcl_pc);
   pcl::fromPCLPointCloud2(pcl_pc, cloud);
 
+  cloud.header = pcl_conversions::toPCL(cloud_msg->header);
+
   pcl::octree::OctreePointCloudChangeDetector<pcl::PointXYZ> octree (RESOLUTION);
+  // TODO: use pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>); schema
   cloud_ptr = cloud.makeShared();
 
   if (first_msg){
@@ -68,18 +173,54 @@ void cloud_cb(const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud;
   filtered_cloud = (pcl::PointCloud<pcl::PointXYZ>::Ptr) new pcl::PointCloud<pcl::PointXYZ>();
+
+  (filtered_cloud)->header = pcl_conversions::toPCL(cloud_msg->header);
+
   filtered_cloud->points.reserve(newPointVector.size());
 
   for (std::vector<int>::iterator it = newPointVector.begin (); it != newPointVector.end (); it++)
     filtered_cloud->points.push_back(cloud_ptr->points[*it]);
 
+  std::vector<pcl::PointIndices> cluster_indices;
+  if(filtered_cloud->size() > MIN_FILTERED_CLOUD_SIZE){
+    // Creating the KdTree object for the search method of the extraction
+    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+    tree->setInputCloud (filtered_cloud);
+
+    // ClusterExtraction
+    pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
+    ec.setClusterTolerance (CLUSTER_TOLERANCE); // 7cm
+    ec.setMinClusterSize (MIN_CLUSTER_SIZE);
+    ec.setMaxClusterSize (MAX_CLUSTER_SIZE);
+    ec.setSearchMethod (tree);
+    ec.setInputCloud (filtered_cloud);
+    ec.extract (cluster_indices);
+    ROS_INFO("cluster size %d", cluster_indices.size());
+  }
+
+
+  int mark = 0;
+  for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it) {
+      pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cluster (new pcl::PointCloud<pcl::PointXYZ>);
+      for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); pit++) {
+          cloud_cluster->points.push_back (filtered_cloud->points[*pit]); //*
+      }
+      ROS_INFO("PointCloud representing the Cluster: %d data points.", cloud_cluster->points.size());
+
+      (cloud_cluster)->header = pcl_conversions::toPCL(cloud_msg->header);
+
+      if(cloud_cluster->points.size() > MIN_CLUSTERED_CLOUD_SIZE){
+          pcl::toROSMsg(*cloud_cluster, msg_clustered);
+          msg_clustered.header = cloud_msg->header;
+          pub_clustered.publish(msg_clustered);
+          mark++;
+          new_person(cloud_cluster, mark);
+      }
+  }
+
   pcl::toROSMsg(*filtered_cloud, msg_filtered);
   msg_filtered.header = cloud_msg->header;
   pub_filtered.publish(msg_filtered);
-
-  pcl::toROSMsg(filter, msg_filter);
-  msg_filter.header = cloud_msg->header;
-  pub_filter.publish(msg_filter);
 
 }
 
@@ -94,10 +235,18 @@ int main (int argc, char** argv)
   f = boost::bind(&dynrcfg_callback, _1, _2);
   server.setCallback(f);
 
-  ros::Subscriber sub = nh.subscribe(SCAN_TOPIC, 1, cloud_cb);
+  std::string topic_scan, topic_filtered, topic_clustered, topic_person;
+  nh.param<std::string>("scan_topic", topic_scan, SCAN_TOPIC);
+  nh.param<std::string>("filtered_topic", topic_filtered, FILTERED_TOPIC);
+  nh.param<std::string>("clustered_topic", topic_clustered, CLUSTERED_TOPIC);
+  nh.param<std::string>("person_topic", topic_person, PERSON_TOPIC);
 
-  pub_filtered = nh.advertise<sensor_msgs::PointCloud2>(FILTERED_TOPIC, 1);
-  pub_filter = nh.advertise<sensor_msgs::PointCloud2>(FILTER_TOPIC, 1);
+  ros::Subscriber sub = nh.subscribe(topic_scan, 1, cloud_cb);
+
+  pub_filtered = nh.advertise<sensor_msgs::PointCloud2>(topic_filtered, 1);
+  pub_clustered = nh.advertise<sensor_msgs::PointCloud2>(topic_clustered, 1);
+  pub_vis = nh.advertise<visualization_msgs::Marker> ("visualization_marker", 0);
+  pub_person = nh.advertise<people_msgs::PersonStamped> (topic_person, 1);
 
   ROS_INFO_STREAM("Spinning");
 
@@ -105,4 +254,5 @@ int main (int argc, char** argv)
 
   return 0;
 }
+
 
